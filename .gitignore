@@ -1,8 +1,11 @@
+data/
 target/
 .classpath
 .project
 .settings/
 .idea/
+*.csv
+*.tsv
 pom.xml.versionsBackup
 .#*
 target/

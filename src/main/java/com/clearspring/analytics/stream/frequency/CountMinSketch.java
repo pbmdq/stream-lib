@@ -60,6 +60,7 @@ public class CountMinSketch implements IFrequency {
         this.confidence = confidence;
         this.width = (int) Math.ceil(2 / epsOfTotalCount);
         this.depth = (int) Math.ceil(-Math.log(1 - confidence) / Math.log(2));
+        System.out.println("width: "+this.width+" depth: "+this.depth);
         initTablesWith(depth, width, seed);
     }
 
