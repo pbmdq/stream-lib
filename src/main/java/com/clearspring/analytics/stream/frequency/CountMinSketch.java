@@ -138,6 +138,23 @@ public class CountMinSketch implements IFrequency {
         }
         size += count;
     }
+    
+    @Override
+    public void delete(String item, long count) {
+        
+        int[] buckets = Filter.getHashBuckets(item, depth, width);
+        for (int i = 0; i < depth; ++i) {
+            table[i][buckets[i]] -= count;
+            if (table[i][buckets[i]] < 0) {
+            	// why to use median?
+            	// TODO: here should it be 0 or undo the deletion?
+            	table[i][buckets[i]] = 0;
+                throw new IllegalArgumentException("After deletion the count is <0");
+            }
+        }
+        size += count;
+    }
+    
 
     @Override
     public long size() {
