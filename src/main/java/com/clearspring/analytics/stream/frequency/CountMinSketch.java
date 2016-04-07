@@ -26,256 +26,256 @@ import java.util.Random;
 import com.clearspring.analytics.stream.membership.Filter;
 
 /**
- * Count-Min Sketch datastructure.
- * An Improved Data Stream Summary: The Count-Min Sketch and its Applications
- * https://web.archive.org/web/20060907232042/http://www.eecs.harvard.edu/~michaelm/CS222/countmin.pdf
+ * Count-Min Sketch datastructure. An Improved Data Stream Summary: The
+ * Count-Min Sketch and its Applications
+ * https://web.archive.org/web/20060907232042/http://www.eecs.harvard.edu/~
+ * michaelm/CS222/countmin.pdf
  */
 public class CountMinSketch implements IFrequency {
 
-    public static final long PRIME_MODULUS = (1L << 31) - 1;
+	public static final long PRIME_MODULUS = (1L << 31) - 1;
 
-    int depth;
-    int width;
-    long[][] table;
-    long[] hashA;
-    long size;
-    double eps;
-    double confidence;
+	int depth;
+	int width;
+	long[][] table;
+	long[] hashA;
+	long size;
+	double eps;
+	double confidence;
 
-    CountMinSketch() {
-    }
+	CountMinSketch() {
+	}
 
-    public CountMinSketch(int depth, int width, int seed) {
-        this.depth = depth;
-        this.width = width;
-        this.eps = 2.0 / width;
-        this.confidence = 1 - 1 / Math.pow(2, depth);
-        initTablesWith(depth, width, seed);
-    }
+	public CountMinSketch(int depth, int width, int seed) {
+		this.depth = depth;
+		this.width = width;
+		this.eps = 2.0 / width;
+		this.confidence = 1 - 1 / Math.pow(2, depth);
+		initTablesWith(depth, width, seed);
+	}
 
-    public CountMinSketch(double epsOfTotalCount, double confidence, int seed) {
-        // 2/w = eps ; w = 2/eps
-        // 1/2^depth <= 1-confidence ; depth >= -log2 (1-confidence)
-        this.eps = epsOfTotalCount;
-        this.confidence = confidence;
-        this.width = (int) Math.ceil(2 / epsOfTotalCount);
-        this.depth = (int) Math.ceil(-Math.log(1 - confidence) / Math.log(2));
-        System.out.println("width: "+this.width+" depth: "+this.depth);
-        initTablesWith(depth, width, seed);
-    }
+	public CountMinSketch(double epsOfTotalCount, double confidence, int seed) {
+		// 2/w = eps ; w = 2/eps
+		// 1/2^depth <= 1-confidence ; depth >= -log2 (1-confidence)
+		this.eps = epsOfTotalCount;
+		this.confidence = confidence;
+		this.width = (int) Math.ceil(2 / epsOfTotalCount);
+		this.depth = (int) Math.ceil(-Math.log(1 - confidence) / Math.log(2));
+		System.out.println("width: " + this.width + " depth: " + this.depth);
+		initTablesWith(depth, width, seed);
+	}
 
-    CountMinSketch(int depth, int width, int size, long[] hashA, long[][] table) {
-        this.depth = depth;
-        this.width = width;
-        this.eps = 2.0 / width;
-        this.confidence = 1 - 1 / Math.pow(2, depth);
-        this.hashA = hashA;
-        this.table = table;
-        this.size = size;
-    }
+	CountMinSketch(int depth, int width, int size, long[] hashA, long[][] table) {
+		this.depth = depth;
+		this.width = width;
+		this.eps = 2.0 / width;
+		this.confidence = 1 - 1 / Math.pow(2, depth);
+		this.hashA = hashA;
+		this.table = table;
+		this.size = size;
+	}
 
-    private void initTablesWith(int depth, int width, int seed) {
-        this.table = new long[depth][width];
-        this.hashA = new long[depth];
-        Random r = new Random(seed);
-        // We're using a linear hash functions
-        // of the form (a*x+b) mod p.
-        // a,b are chosen independently for each hash function.
-        // However we can set b = 0 as all it does is shift the results
-        // without compromising their uniformity or independence with
-        // the other hashes.
-        for (int i = 0; i < depth; ++i) {
-            hashA[i] = r.nextInt(Integer.MAX_VALUE);
-        }
-    }
+	private void initTablesWith(int depth, int width, int seed) {
+		this.table = new long[depth][width];
+		this.hashA = new long[depth];
+		Random r = new Random(seed);
+		// We're using a linear hash functions
+		// of the form (a*x+b) mod p.
+		// a,b are chosen independently for each hash function.
+		// However we can set b = 0 as all it does is shift the results
+		// without compromising their uniformity or independence with
+		// the other hashes.
+		for (int i = 0; i < depth; ++i) {
+			hashA[i] = r.nextInt(Integer.MAX_VALUE);
+		}
+	}
 
-    public double getRelativeError() {
-        return eps;
-    }
+	public double getRelativeError() {
+		return eps;
+	}
 
-    public double getConfidence() {
-        return confidence;
-    }
+	public double getConfidence() {
+		return confidence;
+	}
 
-    int hash(long item, int i) {
-        long hash = hashA[i] * item;
-        // A super fast way of computing x mod 2^p-1
-        // See http://www.cs.princeton.edu/courses/archive/fall09/cos521/Handouts/universalclasses.pdf
-        // page 149, right after Proposition 7.
-        hash += hash >> 32;
-        hash &= PRIME_MODULUS;
-        // Doing "%" after (int) conversion is ~2x faster than %'ing longs.
-        return ((int) hash) % width;
-    }
+	int hash(long item, int i) {
+		long hash = hashA[i] * item;
+		// A super fast way of computing x mod 2^p-1
+		// See
+		// http://www.cs.princeton.edu/courses/archive/fall09/cos521/Handouts/universalclasses.pdf
+		// page 149, right after Proposition 7.
+		hash += hash >> 32;
+		hash &= PRIME_MODULUS;
+		// Doing "%" after (int) conversion is ~2x faster than %'ing longs.
+		return ((int) hash) % width;
+	}
 
-    @Override
-    public void add(long item, long count) {
-        if (count < 0) {
-            // Actually for negative increments we'll need to use the median
-            // instead of minimum, and accuracy will suffer somewhat.
-            // Probably makes sense to add an "allow negative increments"
-            // parameter to constructor.
-            throw new IllegalArgumentException("Negative increments not implemented");
-        }
-        for (int i = 0; i < depth; ++i) {
-            table[i][hash(item, i)] += count;
-        }
-        size += count;
-    }
+	@Override
+	public void add(long item, long count) {
+		if (count < 0) {
+			// Actually for negative increments we'll need to use the median
+			// instead of minimum, and accuracy will suffer somewhat.
+			// Probably makes sense to add an "allow negative increments"
+			// parameter to constructor.
+			throw new IllegalArgumentException("Negative increments not implemented");
+		}
+		for (int i = 0; i < depth; ++i) {
+			table[i][hash(item, i)] += count;
+		}
+		size += count;
+	}
 
-    @Override
-    public void add(String item, long count) {
-        if (count < 0) {
-            // Actually for negative increments we'll need to use the median
-            // instead of minimum, and accuracy will suffer somewhat.
-            // Probably makes sense to add an "allow negative increments"
-            // parameter to constructor.
-            throw new IllegalArgumentException("Negative increments not implemented");
-        }
-        int[] buckets = Filter.getHashBuckets(item, depth, width);
-        for (int i = 0; i < depth; ++i) {
-            table[i][buckets[i]] += count;
-        }
-        size += count;
-    }
-    
-    @Override
-    public void delete(String item, long count) {
-        
-        int[] buckets = Filter.getHashBuckets(item, depth, width);
-        for (int i = 0; i < depth; ++i) {
-            table[i][buckets[i]] -= count;
-            if (table[i][buckets[i]] < 0) {
-            	// why to use median?
-            	// TODO: here should it be 0 or undo the deletion?
-            	table[i][buckets[i]] = 0;
-                throw new IllegalArgumentException("After deletion the count is <0");
-            }
-        }
-        size += count;
-    }
-    
+	@Override
+	public void add(String item, long count) {
+		if (count < 0) {
+			// Actually for negative increments we'll need to use the median
+			// instead of minimum, and accuracy will suffer somewhat.
+			// Probably makes sense to add an "allow negative increments"
+			// parameter to constructor.
+			throw new IllegalArgumentException("Negative increments not implemented");
+		}
+		int[] buckets = Filter.getHashBuckets(item, depth, width);
+		for (int i = 0; i < depth; ++i) {
+			table[i][buckets[i]] += count;
+		}
+		size += count;
+	}
 
-    @Override
-    public long size() {
-        return size;
-    }
+	@Override
+	public void delete(String item, long count) {
+		assert (count > 0);
+		long probCount = estimateCount(item);
+		if (probCount <= 0)
+			throw new IllegalArgumentException("Data is not in the sketch during deletion");
+		int[] buckets = Filter.getHashBuckets(item, depth, width);
+		for (int i = 0; i < depth; ++i) {
+			table[i][buckets[i]] -= count;
+		}
+		size -= count;
+	}
 
-    /**
-     * The estimate is correct within 'epsilon' * (total item count),
-     * with probability 'confidence'.
-     */
-    @Override
-    public long estimateCount(long item) {
-        long res = Long.MAX_VALUE;
-        for (int i = 0; i < depth; ++i) {
-            res = Math.min(res, table[i][hash(item, i)]);
-        }
-        return res;
-    }
+	@Override
+	public long size() {
+		return size;
+	}
 
-    @Override
-    public long estimateCount(String item) {
-        long res = Long.MAX_VALUE;
-        int[] buckets = Filter.getHashBuckets(item, depth, width);
-        for (int i = 0; i < depth; ++i) {
-            res = Math.min(res, table[i][buckets[i]]);
-        }
-        return res;
-    }
+	/**
+	 * The estimate is correct within 'epsilon' * (total item count), with
+	 * probability 'confidence'.
+	 */
+	@Override
+	public long estimateCount(long item) {
+		long res = Long.MAX_VALUE;
+		for (int i = 0; i < depth; ++i) {
+			res = Math.min(res, table[i][hash(item, i)]);
+		}
+		return res;
+	}
 
-    /**
-     * Merges count min sketches to produce a count min sketch for their combined streams
-     *
-     * @param estimators
-     * @return merged estimator or null if no estimators were provided
-     * @throws CMSMergeException if estimators are not mergeable (same depth, width and seed)
-     */
-    public static CountMinSketch merge(CountMinSketch... estimators) throws CMSMergeException {
-        CountMinSketch merged = null;
-        if (estimators != null && estimators.length > 0) {
-            int depth = estimators[0].depth;
-            int width = estimators[0].width;
-            long[] hashA = Arrays.copyOf(estimators[0].hashA, estimators[0].hashA.length);
+	@Override
+	public long estimateCount(String item) {
+		long res = Long.MAX_VALUE;
+		int[] buckets = Filter.getHashBuckets(item, depth, width);
+		for (int i = 0; i < depth; ++i) {
+			res = Math.min(res, table[i][buckets[i]]);
+		}
+		return res;
+	}
 
-            long[][] table = new long[depth][width];
-            int size = 0;
+	/**
+	 * Merges count min sketches to produce a count min sketch for their
+	 * combined streams
+	 *
+	 * @param estimators
+	 * @return merged estimator or null if no estimators were provided
+	 * @throws CMSMergeException
+	 *             if estimators are not mergeable (same depth, width and seed)
+	 */
+	public static CountMinSketch merge(CountMinSketch... estimators) throws CMSMergeException {
+		CountMinSketch merged = null;
+		if (estimators != null && estimators.length > 0) {
+			int depth = estimators[0].depth;
+			int width = estimators[0].width;
+			long[] hashA = Arrays.copyOf(estimators[0].hashA, estimators[0].hashA.length);
 
-            for (CountMinSketch estimator : estimators) {
-                if (estimator.depth != depth) {
-                    throw new CMSMergeException("Cannot merge estimators of different depth");
-                }
-                if (estimator.width != width) {
-                    throw new CMSMergeException("Cannot merge estimators of different width");
-                }
-                if (!Arrays.equals(estimator.hashA, hashA)) {
-                    throw new CMSMergeException("Cannot merge estimators of different seed");
-                }
+			long[][] table = new long[depth][width];
+			int size = 0;
 
-                for (int i = 0; i < table.length; i++) {
-                    for (int j = 0; j < table[i].length; j++) {
-                        table[i][j] += estimator.table[i][j];
-                    }
-                }
-                size += estimator.size;
-            }
+			for (CountMinSketch estimator : estimators) {
+				if (estimator.depth != depth) {
+					throw new CMSMergeException("Cannot merge estimators of different depth");
+				}
+				if (estimator.width != width) {
+					throw new CMSMergeException("Cannot merge estimators of different width");
+				}
+				if (!Arrays.equals(estimator.hashA, hashA)) {
+					throw new CMSMergeException("Cannot merge estimators of different seed");
+				}
 
-            merged = new CountMinSketch(depth, width, size, hashA, table);
-        }
+				for (int i = 0; i < table.length; i++) {
+					for (int j = 0; j < table[i].length; j++) {
+						table[i][j] += estimator.table[i][j];
+					}
+				}
+				size += estimator.size;
+			}
 
-        return merged;
-    }
+			merged = new CountMinSketch(depth, width, size, hashA, table);
+		}
 
-    public static byte[] serialize(CountMinSketch sketch) {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        DataOutputStream s = new DataOutputStream(bos);
-        try {
-            s.writeLong(sketch.size);
-            s.writeInt(sketch.depth);
-            s.writeInt(sketch.width);
-            for (int i = 0; i < sketch.depth; ++i) {
-                s.writeLong(sketch.hashA[i]);
-                for (int j = 0; j < sketch.width; ++j) {
-                    s.writeLong(sketch.table[i][j]);
-                }
-            }
-            return bos.toByteArray();
-        } catch (IOException e) {
-            // Shouldn't happen
-            throw new RuntimeException(e);
-        }
-    }
+		return merged;
+	}
 
-    public static CountMinSketch deserialize(byte[] data) {
-        ByteArrayInputStream bis = new ByteArrayInputStream(data);
-        DataInputStream s = new DataInputStream(bis);
-        try {
-            CountMinSketch sketch = new CountMinSketch();
-            sketch.size = s.readLong();
-            sketch.depth = s.readInt();
-            sketch.width = s.readInt();
-            sketch.eps = 2.0 / sketch.width;
-            sketch.confidence = 1 - 1 / Math.pow(2, sketch.depth);
-            sketch.hashA = new long[sketch.depth];
-            sketch.table = new long[sketch.depth][sketch.width];
-            for (int i = 0; i < sketch.depth; ++i) {
-                sketch.hashA[i] = s.readLong();
-                for (int j = 0; j < sketch.width; ++j) {
-                    sketch.table[i][j] = s.readLong();
-                }
-            }
-            return sketch;
-        } catch (IOException e) {
-            // Shouldn't happen
-            throw new RuntimeException(e);
-        }
-    }
+	public static byte[] serialize(CountMinSketch sketch) {
+		ByteArrayOutputStream bos = new ByteArrayOutputStream();
+		DataOutputStream s = new DataOutputStream(bos);
+		try {
+			s.writeLong(sketch.size);
+			s.writeInt(sketch.depth);
+			s.writeInt(sketch.width);
+			for (int i = 0; i < sketch.depth; ++i) {
+				s.writeLong(sketch.hashA[i]);
+				for (int j = 0; j < sketch.width; ++j) {
+					s.writeLong(sketch.table[i][j]);
+				}
+			}
+			return bos.toByteArray();
+		} catch (IOException e) {
+			// Shouldn't happen
+			throw new RuntimeException(e);
+		}
+	}
 
-    @SuppressWarnings("serial")
-    protected static class CMSMergeException extends FrequencyMergeException {
+	public static CountMinSketch deserialize(byte[] data) {
+		ByteArrayInputStream bis = new ByteArrayInputStream(data);
+		DataInputStream s = new DataInputStream(bis);
+		try {
+			CountMinSketch sketch = new CountMinSketch();
+			sketch.size = s.readLong();
+			sketch.depth = s.readInt();
+			sketch.width = s.readInt();
+			sketch.eps = 2.0 / sketch.width;
+			sketch.confidence = 1 - 1 / Math.pow(2, sketch.depth);
+			sketch.hashA = new long[sketch.depth];
+			sketch.table = new long[sketch.depth][sketch.width];
+			for (int i = 0; i < sketch.depth; ++i) {
+				sketch.hashA[i] = s.readLong();
+				for (int j = 0; j < sketch.width; ++j) {
+					sketch.table[i][j] = s.readLong();
+				}
+			}
+			return sketch;
+		} catch (IOException e) {
+			// Shouldn't happen
+			throw new RuntimeException(e);
+		}
+	}
 
-        public CMSMergeException(String message) {
-            super(message);
-        }
-    }
+	@SuppressWarnings("serial")
+	protected static class CMSMergeException extends FrequencyMergeException {
+
+		public CMSMergeException(String message) {
+			super(message);
+		}
+	}
 }
